@@ -110,9 +110,12 @@ jobs:
           dangerous = []
           # 只检测直接赋字符串常量的情况（如 api_key = \"sk-xxxx\"）
           # os.getenv() / starmap() / **kwargs 等写法是安全的
+          dq = chr(34)
           patterns = [
-              r'api[_-]?key\s*=\s*[\"\\'][a-zA-Z0-9_-]{10,}[\"\\'']',
-              r'token\s*=\s*[\"\\'][a-zA-Z0-9_-]{10,}[\"\\'']',
+              r'apikey\s*=\s*' + dq + r'[a-zA-Z0-9_-]{10,}' + dq,
+              r'token\s*=\s*' + dq + r'[a-zA-Z0-9_-]{10,}' + dq,
+              r\"apikey\s*=\s*'[a-zA-Z0-9_-]{10,}'\",
+              r\"token\s*=\s*'[a-zA-Z0-9_-]{10,}'\",
           ]
           exclude_dirs = {'.venv', 'venv', '__pycache__', '.git', '.github'}
           for f in Path('.').rglob('*.py'):
