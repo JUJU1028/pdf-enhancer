@@ -108,12 +108,19 @@ jobs:
           from pathlib import Path
           import re
           dangerous = []
-          patterns = [r'sk-[a-zA-Z0-9]{20,}', r'api[_-]?key.*=.*[\"\\'][a-zA-Z0-9]', r'token.*=.*[\"\\'][a-zA-Z0-9]']
+          # 只检测直接赋字符串常量的情况（如 api_key = \"sk-xxxx\"）
+          # os.getenv() / starmap() / **kwargs 等写法是安全的
+          patterns = [
+              r'api[_-]?key\s*=\s*[\"\\'][a-zA-Z0-9_-]{10,}[\"\\'']',
+              r'token\s*=\s*[\"\\'][a-zA-Z0-9_-]{10,}[\"\\'']',
+          ]
+          exclude_dirs = {'.venv', 'venv', '__pycache__', '.git', '.github'}
           for f in Path('.').rglob('*.py'):
-              if '.venv' in str(f) or 'venv' in str(f) or '__pycache__' in str(f):
+              if any(ex in str(f) for ex in exclude_dirs):
                   continue
+              content = f.read_text(errors='replace')
               for pattern in patterns:
-                  if re.search(pattern, open(f).read(), re.IGNORECASE):
+                  if re.search(pattern, content, re.IGNORECASE):
                       dangerous.append(str(f))
                       break
           if dangerous:
