@@ -52,8 +52,18 @@
 #### P2.1 GitHub 仓库完善
 - [ ] 推送到 GitHub（需用户提供有效 Token）
 - [ ] 配置 GitHub Actions secrets（SILICONFLOW_API_KEY 等）
-- [ ] 添加 LICENSE（推荐 MIT）
 - [ ] 创建 GitHub Releases（v2.1 tag）
+
+#### P2.2 CI/CD 增强
+- [x] 测试覆盖率达到 80%+（新增 pdfx_checker 测试，60题全部通过）
+- [ ] 添加 linting（ruff / flake8）
+- [ ] 添加 type checking（mypy）
+
+#### P2.3 PDF/X 合规预检
+- [x] 检测 GTS_OutputIntent（PDF/X 准备状态）
+- [x] 字体嵌入检查
+- [x] 出血位验证报告
+- [x] PDF/X-1a 合规性预检评分
 
 #### P2.2 CI/CD 增强
 - [ ] 测试覆盖率达到 80%+（新增边缘 case 测试）
@@ -71,7 +81,13 @@
 - [ ] Windows exe 一键安装包（PyInstaller）
 - [ ] 模型自动下载脚本（Real-ESRGAN）
 
-#### P2.5 文档完善
+#### P2.5 安装与分发
+- [ ] `setup.py` / `pyproject.toml` 打包
+- [ ] Windows exe 一键安装包（PyInstaller）
+- [ ] 模型自动下载脚本（Real-ESRGAN）
+
+#### P2.6 文档完善
+- [x] 添加 LICENSE（MIT）
 - [ ] CONTRIBUTING.md
 - [ ] CHANGELOG.md
 - [ ] 视频演示 / GIF 操作指南
