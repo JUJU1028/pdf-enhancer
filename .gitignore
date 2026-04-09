@@ -1,0 +1,53 @@
+# ── PDF 输出（每次运行生成）──
+output/
+*.pdf
+
+# ── Python 缓存 ──
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# ── 测试 & 覆盖率 ──
+.pytest_cache/
+.coverage
+htmlcov/
+.nox/
+.tox/
+
+# ── 模型文件缓存（下载产物）──
+models/_tmp/
+models/*.zip
+models/*.info.pdf
+
+# ── macOS 系统文件 ──
+.DS_Store
+._*
+
+# ── IDE / 编辑器 ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── 虚拟环境 ──
+venv/
+.venv/
+env/
+.env/
+
+# ── 临时文件 ──
+*.tmp
+*.log
+*.bak
+*.orig
+
+# ── 构建产物 ──
+dist/
+build/
+*.egg-info/
+*.whl

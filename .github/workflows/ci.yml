@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Upload pytest result
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results-${{ matrix.os }}
+          path: tests/_pytest_output.txt
+          retention-days: 7
+
+  quality:
+    name: Code quality check
+    runs-on: ubuntu-latest
+    python-version: ["3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Check Python imports
+        run: |
+          python -c "
+          import sys, ast, pathlib
+          src = pathlib.Path('src')
+          errors = []
+          for f in src.glob('*.py'):
+              try:
+                  with open(f) as fh:
+                      ast.parse(fh.read(), filename=str(f))
+              except SyntaxError as e:
+                  errors.append(f'{f.name}: {e}')
+          if errors:
+              print('SYNTAX ERRORS:')
+              for e in errors: print(' ', e)
+              sys.exit(1)
+          print('All src/*.py files: valid syntax')
+          "
+
+      - name: Check required files
+        run: |
+          python -c "
+          from pathlib import Path
+          required = ['README.md', 'requirements.txt', '.gitignore', 'goal.md',
+                      'pdf_enhancer_gui.py', 'validate_pipeline.py',
+                      'src/pdf_parser.py', 'src/pipeline.py', 'src/image_enhancer.py',
+                      'src/color_converter.py', 'src/cmyk_postprocessor.py',
+                      'models/ISOcoated_v2_eci.icc']
+          missing = [r for r in required if not Path(r).exists()]
+          if missing:
+              print('MISSING:', missing)
+              import sys; sys.exit(1)
+          print('All required files present:', len(required))
+          "
+
+      - name: Check no hardcoded API keys / tokens
+        run: |
+          python -c "
+          from pathlib import Path
+          import re
+          dangerous = []
+          patterns = [r'sk-[a-zA-Z0-9]{20,}', r'api[_-]?key.*=.*[\"\\'][a-zA-Z0-9]', r'token.*=.*[\"\\'][a-zA-Z0-9]']
+          for f in Path('.').rglob('*.py'):
+              if '.venv' in str(f) or 'venv' in str(f) or '__pycache__' in str(f):
+                  continue
+              for pattern in patterns:
+                  if re.search(pattern, open(f).read(), re.IGNORECASE):
+                      dangerous.append(str(f))
+                      break
+          if dangerous:
+              print('DANGER: Possible hardcoded secrets in:', dangerous)
+              import sys; sys.exit(1)
+          print('No hardcoded secrets detected')
+          "
