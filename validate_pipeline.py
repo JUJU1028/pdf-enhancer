@@ -32,6 +32,7 @@ from image_enhancer import ImageEnhancer
 from pdf_parser import PDFParser
 from pipeline import PipelineConfig, PrintPipeline
 from siliconflow_client import SiliconFlowVisionClient
+from pdfx_checker import check_pdfx
 
 console = Console(force_terminal=True, highlight=False, legacy_windows=False)
 
@@ -81,13 +82,18 @@ def check_dependencies() -> dict[str, bool]:
         "Real-ESRGAN (可选)": "realesrgan",
         "basicsr (可选)": "basicsr",
         "torch (可选)": "torch",
+        "PDF/X 预检": "_pdfx_checker_not_importable_",
     }
     for name, module_name in libs.items():
-        try:
-            __import__(module_name)
-            checks[name] = True
-        except ImportError:
-            checks[name] = False
+        if module_name == "_pdfx_checker_not_importable_":
+            # 本地模块，直接检查文件
+            checks[name] = (BASE_DIR / "src" / "pdfx_checker.py").exists()
+        else:
+            try:
+                __import__(module_name)
+                checks[name] = True
+            except ImportError:
+                checks[name] = False
     return checks
 
 
@@ -126,6 +132,7 @@ def build_report_markdown(
     before_report,
     result,
     ai_audit: str | None,
+    pdfx_report=None,
 ) -> str:
     in_size_kb = input_pdf.stat().st_size / 1024
     out_size_kb = output_pdf.stat().st_size / 1024 if output_pdf.exists() else 0
@@ -161,10 +168,23 @@ def build_report_markdown(
 {chr(10).join(f"- {item}" for item in before_report.to_dict()['issues']) or '- 无'}
 
 ## 本轮修复重点
-- 改为“整页重建 + 安全图像替换”双策略，避免 bad xref / update_stream 问题
+- 改为"整页重建 + 安全图像替换"双策略，避免 bad xref / update_stream 问题
 - 使用 `page.get_image_rects()` 修正真实样册图像位置与DPI估算
 - 针对整页72DPI位图样册，默认走整页重建，更接近真实生产需求
-- 色彩转换改为“ICC优先，缺失时稳定回退CMYK”，不再伪造ICC流程
+- 色彩转换改为"ICC优先，缺失时稳定回退CMYK"，不再伪造ICC流程
+
+## PDF/X 合规预检
+{f"**OutputIntent:** {'是' if (pdfx_report.output_intent.present if pdfx_report else False) else '否'}  "
+  f"{pdfx_report.output_intent.standard if pdfx_report and pdfx_report.output_intent.standard else ''}"
+}
+{f"**ICC Profile:** {pdfx_report.output_intent.output_profile if pdfx_report and pdfx_report.output_intent.output_profile else '无'}"}
+{f"**字体嵌入:** {sum(1 for f in pdfx_report.fonts if f.embedded) if pdfx_report else 0}/{len(pdfx_report.fonts) if pdfx_report else 0}"}
+{f"**出血位:** {pdfx_report.bleed.bleed_mm:.1f} mm" if pdfx_report else "无"}
+{f"**PDF/X 合规评分:** {pdfx_report.pdfx_score}/100" if pdfx_report else ""}
+{f"**PDF/X 合格:** {'是' if (pdfx_report.pdfx_compliant if pdfx_report else False) else '否'}"}
+
+{f"**问题:** {', '.join(pdfx_report.issues) if pdfx_report and pdfx_report.issues else '无'}"}
+{f"{chr(10).join(f'- {item}' for item in pdfx_report.suggestions) if pdfx_report and pdfx_report.suggestions else ''}"}
 
 ## AI版面审计（可选）
 {ai_audit or '未启用。若要启用，请在环境变量中设置 `SILICONFLOW_API_KEY`。'}
@@ -182,7 +202,7 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
         Panel.fit(
             "[bold cyan]PDF 印刷增强软件 — 闭环验证[/bold cyan]\n"
             f"输入: {input_pdf}\n输出: {output_pdf}\n模式: {mode}",
-            title="[PDF Print Enhancer v2.0]",
+            title="[PDF Print Enhancer v2.2 — 7步验证]",
         )
     )
 
@@ -201,7 +221,7 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
         console.print(f"[red]缺少必要依赖: {missing}[/red]")
         sys.exit(1)
 
-    console.print("\n[bold]Step 2 / 6 — 输入PDF诊断[/bold]")
+    console.print("\n[bold]Step 2 / 7 — 输入PDF诊断[/bold]")
     parser = PDFParser()
     before_report = parser.parse(input_pdf)
     diag_table = Table(show_header=False, box=None)
@@ -213,7 +233,26 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
     diag_table.add_row("CMYK图像", "是" if before_report.has_cmyk_images else "否")
     console.print(diag_table)
 
-    console.print("\n[bold]Step 3 / 6 — 单图像增强抽检[/bold]")
+    console.print("\n[bold]Step 3 / 7 — PDF/X 合规预检[/bold]")
+    pdfx_report = check_pdfx(input_pdf)
+    pdfx_table = Table(show_header=False, box=None)
+    pdfx_table.add_column("项目", style="bold")
+    pdfx_table.add_column("值")
+    pdfx_table.add_row("GTS_OutputIntent", "是" if pdfx_report.output_intent.present else "否")
+    pdfx_table.add_row("PDF/X 标准", pdfx_report.output_intent.standard or "无")
+    pdfx_table.add_row("ICC Profile", pdfx_report.output_intent.output_profile or "无")
+    pdfx_table.add_row("字体嵌入", f"{sum(1 for f in pdfx_report.fonts if f.embedded)}/{len(pdfx_report.fonts)}")
+    pdfx_table.add_row("出血位", f"{pdfx_report.bleed.bleed_mm:.1f} mm")
+    pdfx_table.add_row("PDF/X 合规评分", f"{pdfx_report.pdfx_score}/100")
+    pdfx_table.add_row("PDF/X 合格", "是" if pdfx_report.pdfx_compliant else "否")
+    console.print(pdfx_table)
+    if pdfx_report.issues:
+        for issue in pdfx_report.issues:
+            console.print(f"  [yellow]! {issue}[/yellow]")
+    for sug in pdfx_report.suggestions:
+        console.print(f"  [dim]{sug}[/dim]")
+
+    console.print("\n[bold]Step 4 / 7 — 单图像增强抽检[/bold]")
     first_page_with_image = next((page for page in before_report.pages if page.images), None)
     if first_page_with_image:
         sample_image = first_page_with_image.images[0]
@@ -235,7 +274,7 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
     else:
         console.print("未找到可抽检图像，跳过。")
 
-    console.print("\n[bold]Step 4 / 6 — 色彩转换抽检[/bold]")
+    console.print("\n[bold]Step 5 / 7 — 色彩转换抽检[/bold]")
     if first_page_with_image:
         converter = ColorConverter(rendering_intent="perceptual")
         converted_bytes, new_mode = converter.convert_bytes(first_page_with_image.images[0].image_bytes)
@@ -243,7 +282,7 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
     else:
         console.print("无图像可测试，跳过。")
 
-    console.print("\n[bold]Step 5 / 6 — 完整管线处理[/bold]")
+    console.print("\n[bold]Step 6 / 7 — 完整管线处理[/bold]")
     config = PipelineConfig(
         enhance_mode=mode,
         convert_to_cmyk=True,
@@ -267,11 +306,11 @@ def run_validation(input_pdf: Path, output_pdf: Path, mode: str = "document") ->
 
         result = pipeline.process(input_pdf, output_pdf, progress_callback=update_progress)
 
-    console.print("\n[bold]Step 6 / 6 — 生成验证报告[/bold]")
+    console.print("\n[bold]Step 7 / 7 — 生成验证报告[/bold]")
     ai_audit = maybe_run_ai_audit(input_pdf, before_report)
     report_path = BASE_DIR / "output" / f"validation_{input_pdf.stem}.md"
     report_path.write_text(
-        build_report_markdown(input_pdf, output_pdf, mode, before_report, result, ai_audit),
+        build_report_markdown(input_pdf, output_pdf, mode, before_report, result, ai_audit, pdfx_report),
         encoding="utf-8",
     )
 
