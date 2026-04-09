@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   test:
@@ -46,13 +46,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results-${{ matrix.os }}
-          path: tests/_pytest_output.txt
+          path: tests/
           retention-days: 7
 
   quality:
     name: Code quality check
     runs-on: ubuntu-latest
-    python-version: ["3.13"]
 
     steps:
       - name: Checkout
@@ -61,7 +60,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
 
       - name: Install deps
         run: pip install -r requirements.txt
@@ -90,9 +89,11 @@ jobs:
           python -c "
           from pathlib import Path
           required = ['README.md', 'requirements.txt', '.gitignore', 'goal.md',
-                      'pdf_enhancer_gui.py', 'validate_pipeline.py',
+                      'LICENSE', 'RULES.md',
+                      'pdf_enhancer_gui.py', 'validate_pipeline.py', 'gen_report.py',
                       'src/pdf_parser.py', 'src/pipeline.py', 'src/image_enhancer.py',
                       'src/color_converter.py', 'src/cmyk_postprocessor.py',
+                      'src/pdfx_checker.py',
                       'models/ISOcoated_v2_eci.icc']
           missing = [r for r in required if not Path(r).exists()]
           if missing:
